@@ -6,16 +6,21 @@ import torch.nn as nn
 from torch.nn import Module
 import torchvision
 from torchvision import transforms
-import argparse
 from dataclasses import dataclass
-from tqdm import tqdm, trange
+from tqdm.autonotebook import tqdm, trange
 import numpy as np
 
 from dataloader import myDataSet
 from metrics_calculation import calculate_metrics_ssim_psnr, calculate_UIQM
 from model import ProposedMynet
 
-# লস ফাংশন (L1 + SSIM + VGG)
+__all__ = [
+    "Trainer",
+    "setup",
+    "training",
+]
+
+# Loss funtions (L1 + SSIM + VGG)
 class CombinedLoss(nn.Module):
     def __init__(self, config):
         super(CombinedLoss, self).__init__()
@@ -64,7 +69,7 @@ class Trainer:
         total_loss_lst = []
         best_uiqm = -float('inf')
         best_model_path = os.path.join(config.snapshots_folder, 'best_model.pth')
-        
+
         # Start epoch from config
         start_epoch = config.start_epoch if hasattr(config, 'start_epoch') else 0
 
@@ -89,12 +94,15 @@ class Trainer:
             batch_iterator = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", leave=False)
             for inp, label, _ in batch_iterator:
                 inp, label = inp.to(device), label.to(device)
+
                 self.model.train()
                 self.opt.zero_grad()
                 out = self.model(inp)
                 loss, mse_loss, vgg_loss = self.loss(out, label)
+
                 loss.backward()
                 self.opt.step()
+
                 primary_loss_tmp += mse_loss.item()
                 vgg_loss_tmp += vgg_loss.item()
                 total_loss_tmp += loss.item()
@@ -118,16 +126,17 @@ class Trainer:
 
             if epoch % config.snapshot_freq == 0:
                 os.makedirs(config.snapshots_folder, exist_ok=True)
-                torch.save(self.model.state_dict(), os.path.join(config.snapshots_folder, f'model_epoch_litemodel{epoch}.pth'))
+                torch.save(self.model.state_dict(), os.path.join(config.snapshots_folder, f'model_epoch_UIE_net_UD_{epoch}.pth'))
 
     @torch.no_grad()
     def eval(self, config, test_dataloader, test_model):
         test_model.eval()
         os.makedirs(config.output_images_path, exist_ok=True)
-    
+
         for img_batch, _, name_batch in test_dataloader:
             img_batch = img_batch.to(config.device)
             output_batch = test_model(img_batch)
+
             for i in range(output_batch.size(0)):
                 output_img = output_batch[i].unsqueeze(0)
                 filename = name_batch[i]
@@ -185,7 +194,7 @@ if __name__ == '__main__':
         clear_image_path="/kaggle/input/euvp-dataset/EUVP/Paired/underwater_dark/trainB/",
         test_images_path="/kaggle/input/euvp-dataset/EUVP/Paired/underwater_dark/trainA/",
         GTr_test_images_path="/kaggle/input/euvp-dataset/EUVP/Paired/underwater_dark/trainB/",
-        test=True,
+        test=False,
         lr=0.0001,
         step_size=50,
         num_epochs=200,
@@ -198,7 +207,7 @@ if __name__ == '__main__':
         snapshots_folder="./snapshots/",
         output_images_path="./data/output/",
         eval_steps=1,
-        pretrained_model_path=None,  # Set to path like "./snapshots/model_epoch_litemodel49.pth" to resume
-        start_epoch=0  # Set to the epoch to resume from (e.g., 50)
+        pretrained_model_path="./snapshots/model_epoch_UIE_net_UD_99.pth",  # 99th epoch weights
+        start_epoch=100  # Start from 100th epoch
     )
     main(config)
