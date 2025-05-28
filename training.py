@@ -8,14 +8,14 @@ import torchvision
 from torchvision import transforms
 import argparse
 from dataclasses import dataclass
-from tqdm.autonotebook import tqdm, trange
+from tqdm import tqdm, trange
 import numpy as np
 
 from dataloader import myDataSet
 from metrics_calculation import calculate_metrics_ssim_psnr, calculate_UIQM
 from model import ProposedMynet
 
-# loss function (L1 + SSIM + VGG)
+# লস ফাংশন (L1 + SSIM + VGG)
 class CombinedLoss(nn.Module):
     def __init__(self, config):
         super(CombinedLoss, self).__init__()
@@ -64,20 +64,24 @@ class Trainer:
         total_loss_lst = []
         best_uiqm = -float('inf')
         best_model_path = os.path.join(config.snapshots_folder, 'best_model.pth')
+        
+        # Start epoch from config
+        start_epoch = config.start_epoch if hasattr(config, 'start_epoch') else 0
 
         if config.test and test_dataloader is not None:
             UIQM, SSIM, PSNR = self.eval(config, test_dataloader, self.model)
             mean_uiqm = np.mean(UIQM)
-            print(f"Epoch [0] - UIQM: {mean_uiqm:.4f}, SSIM: {np.mean(SSIM):.4f}, PSNR: {np.mean(PSNR):.4f}")
+            print(f"Epoch [{start_epoch}] - UIQM: {mean_uiqm:.4f}, SSIM: {np.mean(SSIM):.4f}, PSNR: {np.mean(PSNR):.4f}")
             if mean_uiqm > best_uiqm:
                 best_uiqm = mean_uiqm
                 os.makedirs(config.snapshots_folder, exist_ok=True)
                 torch.save(self.model.state_dict(), best_model_path)
-                print(f"Saved best model at epoch 0 with UIQM: {best_uiqm:.4f}")
+                print(f"Saved best model at epoch {start_epoch} with UIQM: {best_uiqm:.4f}")
 
-        for epoch in trange(config.num_epochs, desc="Training Epochs"):
+        for epoch in trange(start_epoch, config.num_epochs, desc="Training Epochs"):
             primary_loss_tmp, vgg_loss_tmp, total_loss_tmp = 0, 0, 0
 
+            # Learning rate decay
             if epoch > 1 and epoch % config.step_size == 0:
                 for param_group in self.opt.param_groups:
                     param_group['lr'] *= 0.7
@@ -136,22 +140,32 @@ class Trainer:
 def setup(config):
     config.device = "cuda" if torch.cuda.is_available() else "cpu"
     model = ProposedMynet().to(config.device)
+
+    # Load pretrained weights if available
+    if hasattr(config, 'pretrained_model_path') and config.pretrained_model_path and os.path.exists(config.pretrained_model_path):
+        print(f"Loading pretrained model weights from {config.pretrained_model_path}")
+        model.load_state_dict(torch.load(config.pretrained_model_path, map_location=config.device))
+
     transform = transforms.Compose([
         transforms.Resize((config.resize, config.resize)),
         transforms.ToTensor()
     ])
+
     train_dataset = myDataSet(config.raw_images_path, config.clear_image_path, transform, is_train=True)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=config.train_batch_size, shuffle=True)
     print("Train Dataset Reading Completed.")
     print(model)
+
     loss = CombinedLoss(config)
     opt = torch.optim.Adam(model.parameters(), lr=config.lr)
     trainer = Trainer(model, opt, loss)
+
     if config.test:
         test_dataset = myDataSet(config.test_images_path, None, transform, is_train=False)
         test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=config.test_batch_size, shuffle=False)
         print("Test Dataset Reading Completed.")
         return train_dataloader, test_dataloader, model, trainer
+
     return train_dataloader, None, model, trainer
 
 def training(config):
@@ -174,7 +188,7 @@ if __name__ == '__main__':
         test=True,
         lr=0.0001,
         step_size=50,
-        num_epochs=20,
+        num_epochs=200,
         train_batch_size=8,
         test_batch_size=8,
         resize=128,
@@ -183,6 +197,8 @@ if __name__ == '__main__':
         snapshot_freq=1,
         snapshots_folder="./snapshots/",
         output_images_path="./data/output/",
-        eval_steps=1
+        eval_steps=1,
+        pretrained_model_path=None,  # Set to path like "./snapshots/model_epoch_litemodel49.pth" to resume
+        start_epoch=0  # Set to the epoch to resume from (e.g., 50)
     )
     main(config)
