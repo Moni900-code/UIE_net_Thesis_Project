@@ -46,7 +46,7 @@ class ConvBlock(nn.Module):
         x = self.cbam(x)
         return x
 
-class ProposedMynet(nn.Module):
+class Mynet(nn.Module):
     def __init__(self):
         super(Mynet, self).__init__()
         self.input = nn.Conv2d(3, 16, kernel_size=1, stride=1, bias=False)
