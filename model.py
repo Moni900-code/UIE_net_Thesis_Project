@@ -7,7 +7,7 @@ from ptflops import get_model_complexity_info
 # CBAM Module
 # -------------------------
 class CBAM(nn.Module):
-    def __init__(self, in_channels, reduction_ratio=8):  # Increased reduction ratio for lighter CBAM
+    def __init__(self, in_channels, reduction_ratio=16):
         super(CBAM, self).__init__()
         self.channel_gate = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
@@ -16,7 +16,7 @@ class CBAM(nn.Module):
             nn.Conv2d(in_channels // reduction_ratio, in_channels, kernel_size=1, stride=1, bias=False),
             nn.Hardsigmoid()
         )
-        self.spatial_gate = nn.Conv2d(2, 1, kernel_size=5, stride=1, padding=2, bias=False)  # Reduced kernel size
+        self.spatial_gate = nn.Conv2d(2, 1, kernel_size=7, stride=1, padding=3, bias=False)
 
     def forward(self, x):
         channel_att = self.channel_gate(x)
@@ -60,15 +60,15 @@ class ConvBlock(nn.Module):
 class Mynet(nn.Module):
     def __init__(self):
         super(Mynet, self).__init__()
-        self.input = nn.Conv2d(3, 8, kernel_size=1, stride=1, bias=False)  # Reduced channels
-        self.bn_input = nn.BatchNorm2d(8)
+        self.input = nn.Conv2d(3, 16, kernel_size=1, stride=1, bias=False)
+        self.bn_input = nn.BatchNorm2d(16)
         self.hs_input = nn.Hardswish()
         
-        self.block1 = ConvBlock(8, 16, stride=1)  # Reduced channels
-        self.block2 = ConvBlock(16, 32, stride=1)  # Reduced channels
-        self.block3 = ConvBlock(48, 16, stride=1, use_cbam=True)  # Reduced channels, kept CBAM
+        self.block1 = ConvBlock(16, 32, stride=1)
+        self.block2 = ConvBlock(32, 64, stride=1)
+        self.block3 = ConvBlock(80, 32, stride=1, use_cbam=True)  # CBAM used here
         
-        self.output = nn.Conv2d(16, 3, kernel_size=1, stride=1)
+        self.output = nn.Conv2d(32, 3, kernel_size=1, stride=1)
         self.final_act = nn.Tanh()
 
     def forward(self, x):
@@ -78,7 +78,7 @@ class Mynet(nn.Module):
         
         x = self.block1(x)
         x = self.block2(x)
-        x = torch.cat([x, torch.zeros_like(x)[:, :16, :, :]], dim=1)  # Pad to 48 channels
+        x = torch.cat([x, torch.zeros_like(x)[:, :16, :, :]], dim=1)  # Pad to 80 channels
         x = self.block3(x)
         
         x = self.output(x)
