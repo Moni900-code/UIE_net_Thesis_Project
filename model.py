@@ -135,11 +135,17 @@ class Mynet(nn.Module):
         self.output = nn.Conv2d(32, 3, kernel_size=1, stride=1)
         self.final_act = nn.Tanh()
 
-    def forward(self, x):
-        # Extract color features from the input image
-        color_features = self.color_extractor(x)
+    def forward(self, x, gt_color_source=None):
+        """
+        Args:
+            x (Tensor): degraded input image
+            gt_color_source (Tensor or None): GT image to extract color features from (used only during training)
+        """
+        # Use GT image to extract color feature if provided, else fallback to degraded input
+        color_input = gt_color_source if gt_color_source is not None else x
+        color_features = self.color_extractor(color_input)
         
-        # Initial feature extraction for content features
+        # Initial feature extraction from degraded image
         x = self.input(x)
         x = self.bn_input(x)
         x = self.hs_input(x)
@@ -150,7 +156,7 @@ class Mynet(nn.Module):
         x = torch.cat([x, torch.zeros_like(x)[:, :16, :, :]], dim=1)  # Pad to 80 channels
         content_features = self.block3(x)  # Content features
         
-        # Ensure color features match content features' dimensions
+        # Match resolution
         color_features = F.interpolate(color_features, size=content_features.shape[2:], mode='bilinear', align_corners=False)
         
         # Apply CRM
