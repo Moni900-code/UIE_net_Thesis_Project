@@ -18,13 +18,12 @@ def get_image_list(raw_image_path, clear_image_path=None):
         image_list.append([raw_img_path, clear_img_path, raw_img_name])
     return image_list
 
-
 class myDataSet(torch.utils.data.Dataset):
     def __init__(self, raw_image_path, clear_image_path=None, transform=None, mode="train"):
         """
         mode: 'train', 'val', or 'test'
         - 'train' => input + GT required
-        - 'val'   => only input image, GT = dummy
+        - 'val'   => only input image, GT = None
         - 'test'  => input + GT required
         """
         self.raw_image_path = raw_image_path
@@ -44,7 +43,7 @@ class myDataSet(torch.utils.data.Dataset):
         # Handle GT image
         if self.mode == "val":
             # No GT during validation
-            clear_img = torch.zeros_like(raw_img)
+            clear_img = None
         else:
             if clear_path is None:
                 raise ValueError(f"GT image not found for mode={self.mode}")
