@@ -60,10 +60,12 @@ class ColorEstimator(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ColorEstimator, self).__init__()
         self.model = nn.Sequential(
-            nn.Conv2d(in_channels, 16, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(16),
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(16, out_channels, kernel_size=1, bias=False)
+            nn.Conv2d(64, out_channels, kernel_size=1, bias=False)
         )
 
     def forward(self, x):
