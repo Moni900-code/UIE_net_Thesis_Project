@@ -1,6 +1,7 @@
 import torch
 import os
 from PIL import Image
+from torch.utils.data import Dataset
 
 def get_image_list(raw_image_path, clear_image_path=None):
     raw_image_list = sorted(os.listdir(raw_image_path))
@@ -18,7 +19,35 @@ def get_image_list(raw_image_path, clear_image_path=None):
         image_list.append([raw_img_path, clear_img_path, raw_img_name])
     return image_list
 
-class myDataSet(torch.utils.data.Dataset):
+def custom_collate_fn(batch):
+    """
+    Custom collate function to handle None values in validation mode.
+    Returns:
+        - For mode='val': (raw_img_batch, None, name_batch)
+        - For mode='train' or 'test': (raw_img_batch, clear_img_batch, name_batch)
+    """
+    raw_imgs = []
+    clear_imgs = []
+    names = []
+    
+    mode = batch[0][3]  # Get mode from the first item (added mode to __getitem__ return)
+    
+    for item in batch:
+        raw_imgs.append(item[0])
+        if mode != "val":
+            clear_imgs.append(item[1])
+        names.append(item[2])
+    
+    raw_img_batch = torch.stack(raw_imgs)
+    name_batch = names
+    
+    if mode == "val":
+        return raw_img_batch, None, name_batch
+    else:
+        clear_img_batch = torch.stack(clear_imgs)
+        return raw_img_batch, clear_img_batch, name_batch
+
+class myDataSet(Dataset):
     def __init__(self, raw_image_path, clear_image_path=None, transform=None, mode="train"):
         """
         mode: 'train', 'val', or 'test'
@@ -51,7 +80,7 @@ class myDataSet(torch.utils.data.Dataset):
             if self.transform:
                 clear_img = self.transform(clear_img)
 
-        return raw_img, clear_img, image_name
+        return raw_img, clear_img, image_name, self.mode  # Added mode for collate_fn
 
     def __len__(self):
         return len(self.image_list)
