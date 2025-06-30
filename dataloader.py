@@ -1,6 +1,7 @@
 import torch
 import os
 from PIL import Image
+from torch.utils.data import Dataset, DataLoader
 
 def get_image_list(raw_image_path, clear_image_path=None):
     raw_image_list = sorted(os.listdir(raw_image_path))
@@ -18,7 +19,28 @@ def get_image_list(raw_image_path, clear_image_path=None):
         image_list.append([raw_img_path, clear_img_path, raw_img_name])
     return image_list
 
-class myDataSet(torch.utils.data.Dataset):
+def custom_collate_fn(batch):
+    """
+    Custom collate function to handle None values in the batch.
+    """
+    # Separate the batch into raw images, GT images, and names
+    raw_imgs, gt_imgs, names = zip(*batch)
+    
+    # Convert raw images to tensor batch
+    raw_imgs = torch.stack([img for img in raw_imgs])
+    
+    # Handle GT images: if None, keep as None; otherwise, stack as tensors
+    if all(img is None for img in gt_imgs):
+        gt_imgs = None
+    else:
+        gt_imgs = torch.stack([img for img in gt_imgs if img is not None])
+    
+    # Keep names as a list
+    names = list(names)
+    
+    return raw_imgs, gt_imgs, names
+
+class myDataSet(Dataset):
     def __init__(self, raw_image_path, clear_image_path=None, transform=None, mode="train"):
         """
         mode: 'train', 'val', or 'test'
