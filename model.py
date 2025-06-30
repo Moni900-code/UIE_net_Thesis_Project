@@ -36,6 +36,9 @@ class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, use_cbam=True):
         super(ConvBlock, self).__init__()
         self.use_cbam = use_cbam
+        self.stride = stride
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.dw = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, padding=1, groups=in_channels, bias=False)
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.hs = nn.Hardswish()
@@ -43,8 +46,15 @@ class ConvBlock(nn.Module):
             self.cbam = CBAM(in_channels)
         self.pw = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
 
     def forward(self, x):
+        identity = x
         x = self.dw(x)
         x = self.bn1(x)
         x = self.hs(x)
@@ -52,6 +62,8 @@ class ConvBlock(nn.Module):
             x = self.cbam(x)
         x = self.pw(x)
         x = self.bn2(x)
+        x += self.shortcut(identity)  # Residual connection
+        x = self.hs(x)  # Apply activation after addition
         return x
 
 # -------------------------
