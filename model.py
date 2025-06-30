@@ -12,12 +12,12 @@ class CBAM(nn.Module):
         super(CBAM, self).__init__()
         self.channel_gate = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_channels, in_channels // reduction_ratio, kernel_size=1, stride=1, bias=False),
+            nn.Conv2d(in_channels, in_channels // reduction_ratio, 1, bias=False),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // reduction_ratio, in_channels, kernel_size=1, stride=1, bias=False),
+            nn.Conv2d(in_channels // reduction_ratio, in_channels, 1, bias=False),
             nn.Hardsigmoid()
         )
-        self.spatial_gate = nn.Conv2d(2, 1, kernel_size=7, stride=1, padding=3, bias=False)
+        self.spatial_gate = nn.Conv2d(2, 1, 7, padding=3, bias=False)
 
     def forward(self, x):
         channel_att = self.channel_gate(x)
@@ -25,8 +25,7 @@ class CBAM(nn.Module):
         max_pool = torch.max(x, dim=1, keepdim=True)[0]
         avg_pool = torch.mean(x, dim=1, keepdim=True)
         spatial_input = torch.cat([max_pool, avg_pool], dim=1)
-        spatial_att = self.spatial_gate(spatial_input)
-        spatial_att = torch.sigmoid(spatial_att)
+        spatial_att = torch.sigmoid(self.spatial_gate(spatial_input))
         x = x * spatial_att
         return x
 
@@ -37,23 +36,19 @@ class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, use_cbam=False):
         super(ConvBlock, self).__init__()
         self.use_cbam = use_cbam
-        self.dw = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, padding=1, groups=in_channels, bias=False)
+        self.dw = nn.Conv2d(in_channels, in_channels, 3, stride=stride, padding=1, groups=in_channels, bias=False)
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.hs = nn.Hardswish()
-        if self.use_cbam:
+        if use_cbam:
             self.cbam = CBAM(in_channels)
-        self.pw = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False)
+        self.pw = nn.Conv2d(in_channels, out_channels, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
 
     def forward(self, x):
-        x = self.dw(x)
-        x = self.bn1(x)
-        x = self.hs(x)
+        x = self.hs(self.bn1(self.dw(x)))
         if self.use_cbam:
             x = self.cbam(x)
-        x = self.pw(x)
-        x = self.bn2(x)
-        return x
+        return self.bn2(self.pw(x))
 
 # -------------------------
 # Color Feature Extractor
@@ -62,16 +57,14 @@ class ColorFeatureExtractor(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ColorFeatureExtractor, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.Conv2d(in_channels, 16, 3, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU()
         )
-        self.decoder = nn.Conv2d(16, out_channels, kernel_size=1, stride=1, bias=False)
+        self.decoder = nn.Conv2d(16, out_channels, 1, bias=False)
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        return self.decoder(self.encoder(x))
 
 # -------------------------
 # Balanced Stretching Module
@@ -79,57 +72,47 @@ class ColorFeatureExtractor(nn.Module):
 class BalancedStretchingModule(nn.Module):
     def __init__(self, in_channels):
         super(BalancedStretchingModule, self).__init__()
-        self.conv1x1 = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, bias=False)
-        self.conv3x3 = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1x1 = nn.Conv2d(in_channels, in_channels, 1, bias=False)
+        self.conv3x3 = nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False)
         self.bn = nn.BatchNorm2d(in_channels)
 
     def forward(self, x):
-        Ay = torch.mean(x, dim=(2, 3), keepdim=True)
-        My = torch.max(x.view(x.size(0), x.size(1), -1), dim=2, keepdim=True)[0].view(x.size(0), x.size(1), 1, 1)
-        Ay = self.conv1x1(Ay)
-        My = self.conv1x1(My)
-        x = x + Ay + My
-        x = self.bn(x)
-        residual = x
-        x = self.conv3x3(x)
-        x = F.relu(x)
-        x = x + residual
-        return x
+        Ay = self.conv1x1(torch.mean(x, dim=(2, 3), keepdim=True))
+        My = self.conv1x1(torch.max(x.view(x.size(0), x.size(1), -1), dim=2)[0].view(x.size(0), x.size(1), 1, 1))
+        x = self.bn(x + Ay + My)
+        return x + F.relu(self.conv3x3(x))
 
 # -------------------------
-# PLM with Transformer-based Self-Attention
+# Efficient Transformer-based PLM
 # -------------------------
 class PredictionLearningModule(nn.Module):
-    def __init__(self, in_channels, num_heads=4):
+    def __init__(self, in_channels, num_heads=4, reduction=4):
         super(PredictionLearningModule, self).__init__()
-        self.in_channels = in_channels
-        self.conv3x3 = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1, groups=in_channels, bias=False)
+        self.reduction = reduction
+        self.down = nn.AvgPool2d(reduction)
+        self.up = nn.Upsample(scale_factor=reduction, mode='bilinear', align_corners=False)
+        self.conv3x3 = nn.Conv2d(in_channels, in_channels, 3, padding=1, groups=in_channels, bias=False)
         self.bn = nn.BatchNorm2d(in_channels)
-        self.self_attention = nn.MultiheadAttention(embed_dim=in_channels, num_heads=num_heads, batch_first=True)
-        self.pos_encoding = nn.Parameter(torch.randn(1, in_channels, 16, 16))  # base encoding size
+        self.attn = nn.MultiheadAttention(embed_dim=in_channels, num_heads=num_heads, batch_first=True)
         self.ffn = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels * 2, kernel_size=1),
+            nn.Conv2d(in_channels, in_channels * 2, 1),
             nn.ReLU(),
-            nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
+            nn.Conv2d(in_channels * 2, in_channels, 1)
         )
         self.gamma = nn.Parameter(torch.ones(1))
         self.alpha = 1e-8
 
     def forward(self, x):
-        x = self.conv3x3(x)
-        x = self.bn(x)
-        x = F.relu(x)
-        b, c, h, w = x.shape
-        pos_enc = F.interpolate(self.pos_encoding, size=(h, w), mode='bilinear', align_corners=False)
-        x = x + pos_enc
-        x = x.flatten(2).permute(0, 2, 1)
-        query = torch.zeros_like(x)
-        x, _ = self.self_attention(query, x, x)
-        x = x.permute(0, 2, 1).view(b, c, h, w)
-        x = self.ffn(x)
-        x = torch.clamp(x, min=self.alpha)
-        x = x * self.gamma
-        return x
+        res = x
+        x = F.relu(self.bn(self.conv3x3(x)))
+        x_ds = self.down(x)
+        b, c, h, w = x_ds.shape
+        x_flat = x_ds.flatten(2).permute(0, 2, 1)
+        q = torch.zeros_like(x_flat)
+        x_attn, _ = self.attn(q, x_flat, x_flat)
+        x_attn = x_attn.permute(0, 2, 1).view(b, c, h, w)
+        x_attn = self.up(self.ffn(x_attn))
+        return res + self.gamma * torch.clamp(x_attn, min=self.alpha)
 
 # -------------------------
 # Color Recovery Module
@@ -137,61 +120,54 @@ class PredictionLearningModule(nn.Module):
 class ColorRecoveryModule(nn.Module):
     def __init__(self, in_channels):
         super(ColorRecoveryModule, self).__init__()
-        self.in_channels = in_channels
-        self.conv1x1 = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.conv1x1 = nn.Conv2d(in_channels, in_channels, 1)
 
-    def forward(self, content_features, color_features):
-        D = -content_features - color_features
-        M = content_features * color_features
+    def forward(self, content, color):
+        D = -content - color
+        M = content * color
         L = 2 * torch.sigmoid(D) * torch.tanh(M)
-        sigmoid_D = torch.sigmoid(D)
-        sigmoid_D = torch.clamp(sigmoid_D, 0, 0.5)
         L = torch.clamp(L, 0, 1)
-        output_features = []
-        current_color = color_features
-        for i in range(4):
-            F_i = L * current_color + content_features
-            output_features.append(F_i)
-            current_color = self.conv1x1(F_i)
-            current_color = F.relu(current_color)
-        final_output = torch.mean(torch.stack(output_features), dim=0)
-        return final_output
+        current = color
+        outputs = []
+        for _ in range(4):
+            F_i = L * current + content
+            outputs.append(F_i)
+            current = F.relu(self.conv1x1(F_i))
+        return torch.mean(torch.stack(outputs), dim=0)
 
 # -------------------------
-# Mynet with Transformer-based PLM
+# Main Network
 # -------------------------
 class Mynet(nn.Module):
     def __init__(self):
         super(Mynet, self).__init__()
-        self.input = nn.Conv2d(3, 16, kernel_size=1, stride=1, bias=False)
-        self.bn_input = nn.BatchNorm2d(16)
-        self.hs_input = nn.Hardswish()
-        self.block1 = ConvBlock(16, 32, stride=1)
-        self.block2 = ConvBlock(32, 64, stride=1)
-        self.block3 = ConvBlock(80, 32, stride=1, use_cbam=True)
-        self.color_extractor = ColorFeatureExtractor(in_channels=3, out_channels=32)
-        self.bsm = BalancedStretchingModule(in_channels=32)
-        self.crm = ColorRecoveryModule(in_channels=32)
-        self.plm = PredictionLearningModule(in_channels=32, num_heads=4)
-        self.output = nn.Conv2d(32, 3, kernel_size=1, stride=1)
+        self.input = nn.Sequential(
+            nn.Conv2d(3, 16, 1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.Hardswish()
+        )
+        self.block1 = ConvBlock(16, 32)
+        self.block2 = ConvBlock(32, 64)
+        self.block3 = ConvBlock(80, 32, use_cbam=True)
+        self.color_extractor = ColorFeatureExtractor(3, 32)
+        self.bsm = BalancedStretchingModule(32)
+        self.crm = ColorRecoveryModule(32)
+        self.plm = PredictionLearningModule(32, num_heads=4)
+        self.output = nn.Conv2d(32, 3, 1)
         self.final_act = nn.Tanh()
 
     def forward(self, x):
-        color_features = self.color_extractor(x)
+        color = self.color_extractor(x)
         x = self.input(x)
-        x = self.bn_input(x)
-        x = self.hs_input(x)
         x = self.block1(x)
         x = self.block2(x)
-        x = torch.cat([x, torch.zeros_like(x)[:, :16, :, :]], dim=1)
-        content_features = self.block3(x)
-        content_features = self.bsm(content_features)
-        color_features = F.interpolate(color_features, size=content_features.shape[2:], mode='bilinear', align_corners=False)
-        x = self.crm(content_features, color_features)
+        x = F.pad(x, (0, 0, 0, 0, 0, 16))  # Pad to 80 channels
+        content = self.block3(x)
+        content = self.bsm(content)
+        color = F.interpolate(color, size=content.shape[2:], mode='bilinear', align_corners=False)
+        x = self.crm(content, color)
         x = self.plm(x)
-        x = self.output(x)
-        x = self.final_act(x)
-        return x
+        return self.final_act(self.output(x))
 
 # -------------------------
 # Main: Summary + FLOPs
@@ -200,21 +176,20 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = Mynet().to(device)
 
-    #  Model architecture print (but no torchsummary)
-    print("\nModel Architecture:")
+    print("\n Model Architecture:")
     print(model)
 
-    #  Trainable parameter count
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"\nTotal trainable parameters: {total_params}")
+    print(f"\n Total trainable parameters: {total_params}")
 
-    #  FLOPs (no GPU OOM because model moved to CPU)
-    print("\nCalculating FLOPs:")
+    print("\n Model Summary:")
+    summary(model, input_size=(3, 224, 224))
+
+    print("\n Calculating FLOPs:")
     with torch.cuda.device(0 if torch.cuda.is_available() else "cpu"):
         macs, params = get_model_complexity_info(
-            model.to("cpu"), (3, 224, 224), as_strings=True,
+            model, (3, 224, 224), as_strings=True,
             print_per_layer_stat=False, verbose=False
         )
-        print(f"FLOPs: {macs}")
-        print(f"Parameters: {params}")
-
+        print(f"\n FLOPs: {macs}")
+        print(f" Parameters: {params}")
