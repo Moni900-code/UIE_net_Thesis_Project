@@ -1,7 +1,6 @@
 import torch
 import os
 from PIL import Image
-from torch.utils.data import Dataset
 
 def get_image_list(raw_image_path, clear_image_path=None):
     raw_image_list = sorted(os.listdir(raw_image_path))
@@ -19,41 +18,13 @@ def get_image_list(raw_image_path, clear_image_path=None):
         image_list.append([raw_img_path, clear_img_path, raw_img_name])
     return image_list
 
-def custom_collate_fn(batch):
-    """
-    Custom collate function to handle None values in validation mode.
-    Returns:
-        - For mode='val': (raw_img_batch, None, name_batch)
-        - For mode='train' or 'test': (raw_img_batch, clear_img_batch, name_batch)
-    """
-    raw_imgs = []
-    clear_imgs = []
-    names = []
-    
-    mode = batch[0][3]  # Get mode from the first item (added mode to __getitem__ return)
-    
-    for item in batch:
-        raw_imgs.append(item[0])
-        if mode != "val":
-            clear_imgs.append(item[1])
-        names.append(item[2])
-    
-    raw_img_batch = torch.stack(raw_imgs)
-    name_batch = names
-    
-    if mode == "val":
-        return raw_img_batch, None, name_batch
-    else:
-        clear_img_batch = torch.stack(clear_imgs)
-        return raw_img_batch, clear_img_batch, name_batch
-
-class myDataSet(Dataset):
+class myDataSet(torch.utils.data.Dataset):
     def __init__(self, raw_image_path, clear_image_path=None, transform=None, mode="train"):
         """
         mode: 'train', 'val', or 'test'
         - 'train' => input + GT required
         - 'val'   => only input image, GT = None
-        - 'test'  => input + GT required
+        - 'test'  => only input image, GT = None
         """
         self.raw_image_path = raw_image_path
         self.clear_image_path = clear_image_path
@@ -70,17 +41,17 @@ class myDataSet(Dataset):
             raw_img = self.transform(raw_img)
 
         # Handle GT image
-        if self.mode == "val":
-            # No GT during validation
-            clear_img = None
-        else:
+        if self.mode == "train":
             if clear_path is None:
                 raise ValueError(f"GT image not found for mode={self.mode}")
             clear_img = Image.open(clear_path).convert('RGB')
             if self.transform:
                 clear_img = self.transform(clear_img)
+        else:
+            # For validation and testing, GT is None
+            clear_img = None
 
-        return raw_img, clear_img, image_name, self.mode  # Added mode for collate_fn
+        return raw_img, clear_img, image_name
 
     def __len__(self):
         return len(self.image_list)
