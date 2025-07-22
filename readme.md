@@ -1,98 +1,129 @@
-# EnahnceNet: LiteEnhanceNet: A Lightweight Network for Real-time Single Underwater Image Enhancement 
+# **A Deep Learning Network for Underwater Image Enhancement**
 
 
-### image restoration with PyTorch:
-python friendly open-source deep learning framework for research purpose. 
+## **Project Overview**
 
-### Dataset: EUVP: 1. paired: dark, imagenet, scenes..(MSE matric) 2. unpaired (real time underwater image enhancement:- UIQM, SSIM, PSNR)
+This project is a lightweight deep learning model designed for **real-time enhancement of single underwater images**, focusing on restoring clarity, contrast, and color in degraded marine visuals. The model is optimized to run efficiently on resource-constrained systems while maintaining high perceptual quality.
 
-## compare among matrics: ssim, psnr, uiqm,
-### ssim (structure similarity index measure): 
-To check the structure similarity( texture,luminance etc) between ground truth and enhanced image.. 0-1 range. need increase value.
+It combines **depthwise separable convolutions**, **attention mechanisms (CBAM/SE)**, and optimized **residual connections** to achieve a balance between visual fidelity and computational cost. Applications include marine exploration, AUVs, underwater robotics, and underwater monitoring systems.
 
-# value: 0.84
+---
 
-### psnr (point signal to noise ratio): 
-To check the noise level of image. increase value is good. 40+ is high quality.
+## **Model Architecture**
 
-# value: 27.43
+### Overall Architecture
+![Alt Text](snapshots/method_archi.png)
 
-### uiqm (underwater image quality measure): 
-To check overall visual quality improve. important matric for underwater image enhancement
+* **Backbone**: Lightweight convolutional network
+* **Attention**: CBAM modules to refine spatial and channel features
+* **Activation**: Hardswish, Hardsigmoid, ReLU for non-linear transformation
+* **Loss Functions**: Combination of pixel-wise (MSE), SSIM, perceptual (VGG), and UIQM-based custom losses
+* **Framework**: Implemented in PyTorch
 
-# value: 2.90
-
-### mse (mean squred error): 
-To check difference between GT and output image
-
-# value: 0.15
+### Content Feature Architecture
+![Alt Text](snapshots/content_feature_archi.png)
 
 
+---
 
-1. Data folder:  output: enhanced image 
+## **Dataset: EUVP, UIEB, LSUI for training and testing the model**
 
-2. snapshots: weight save checkpoint of the 
+---
 
-3. utils folder: utility function/ helper code:
+## **Evaluation Metrics**
 
-   1. data_utils.py: training and validation dataset augmnetation and transformation/normalization
+| Metric                                      | Description                                         | Target                           
+| ------------------------------------------- | --------------------------------------------------- | --------------------------------
+| **SSIM** (Structural Similarity Index)      | Measures structural similarity (texture, luminance) | ↑ Higher is better (0–1)         
+| **PSNR** (Peak Signal-to-Noise Ratio)       | Measures noise level in dB                          | ↑ Higher is better (40+ is good) 
+| **UIQM** (Underwater Image Quality Measure) | Composite metric for underwater image quality       | ↑ Higher is better               
+| **MSE** (Mean Squared Error)                | Pixel-level difference with GT                      | ↓ Lower is better                
 
-   2. imqual_utils.py: image quality check code----- psnr and ssim matrics calculation process
+---
 
-   3. plot_utils.py: enhance image generation, loss value plot fo generator and discriminator, 
+## **Codebase Structure**
 
-   4. ssm_psnr_utils.py: same as imqual_utils.py
+```
+LiteEnhanceNet/
+│
+├── data/                         # Dataset and output enhanced images
+├── snapshots/                   # Saved model weights and checkpoints
+├── utils/
+│   ├── data_utils.py            # Augmentation, normalization
+│   ├── imqual_utils.py          # PSNR and SSIM calculations
+│   ├── plot_utils.py            # Loss and image plot functions
+│   ├── ssim_psnr_utils.py       # SSIM and PSNR helpers
+│   ├── uqim_utils.py            # UICM, UISM, UIConM metrics
+│
+├── wandb/                       # Visualizations using Weights & Biases
+├── combined_loss.py            # Total loss calculation
+├── dataloader.py               # Dataset loading logic
+├── metrics_calculation.py      # Final evaluation metric summary
+├── model.py                    # Main model architecture
+├── ssim_loss.py                # SSIM loss function
+├── vgg_loss.py                 # Perceptual loss using VGG19
+├── training.py                 # Model training pipeline
+├── test.py                     # Model evaluation and testing
+├── uiqm_utils.py               # Enhanced UIQM implementation
+```
 
-   5. uqim_utils.py: UICM (Underwater imae colorfulness measure), UISM (Underwater Image Sharpness Measure), UIConM (Underwater Image Contrast Measure)
+---
 
-4. wandb folder: Help to model training, validation loss, accuracy visualizaion using weight and biasess library 
+## **Training Details**
 
-5. combined_loss.py: add all loss for total loss
+```
+Framework: PyTorch
+Platform: Kaggle Notebook Environment
+Hardware: NVIDIA GPU
+Input Size: 256×256 
+Training details: 
+Epoch: 200
+Batch size: 8
+Optimizer: Adam
+Learning Rate: 0.0001 
+Loss: L2, SSIM, VGG16
+Metrics: PSNR, SSIM, UIQM
+```
 
-6. dataloader.py: For dataset load and tranfer data for training and testing.
+## **Training the Model**
 
-7. metrics_calculation.py: After training, calculate all metrics for generated enhanced image.
-
-8. model.py: model architecture
-
-9. ssim_loss.py: Calculate ssim loss during trianing the model 
-
-10. vgg_loss.py: to calculate loss based on human perception-based similarity. better quality = small value of vgg loss. we use vgg19 pretrain model.
-
-11. test.py:
-12. training.py:
-
-13. uiqm_utils.py: same as upper uqim_utils.py file with window size=8 and First handles division-by-zero edge  case.
-
-# note: window_size = 10, a 100x100 image will be divided into 10x10 = 100 blocks. Each block is analyzed for quality (calculates contrast, sharpness, or enhancement).
-
-
-
-## Train the Model
+```bash
 python training.py
+```
 
-## Test the Model
+## **Testing the Model**
+
+```bash
 python test.py
+```
 
-## Environment
-python=3.8
-pytorch=1.11
-cudnn=8.2
-numpy=1.22
+## Result
 
+![Alt Text](snapshots/some_env.png)
 
+---
 
+## **Environment**
 
+* Python: `3.8`
+* PyTorch: `1.11`
+* CUDNN: `8.2`
+* NumPy: `1.22`
 
+---
 
-# Additional note:
+## **Additional Notes**
 
-Tensor: multi-dimentional array like NumPy array.. For Deep learning purpose all images are converted into tensor array for easy numeric calculation.
+* **Tensor**: Multi-dimensional array used to represent images for deep learning computations.
+* **Pixel Loss (MSE, L1)**: Compares exact pixel values between images.
+* **SSIM Loss**: Measures perceptual similarity (lower is better during training).
+* **Perceptual (VGG) Loss**: Compares high-level features like edges and patterns using a pretrained VGG19 network.
+* **Luminance vs. Contrast**:
 
-Pixel loss (MSE or L1): claculate prixel by pixel difference of images. 
-VGG based perceptual loss: to check high level feature ( texture, edges, patterns)
+  * *Luminance*: Pixel-wise brightness
+  * *Contrast*: Brightness difference among groups of pixels
+* **UIQM Blocks**:
+  A 100×100 image with `window_size=10` will be divided into `10×10=100` blocks. Each block is analyzed for visual quality (contrast, sharpness, colorfulness).
 
-ssim loss:  small value.... calculate for enhanced image
+---
 
-luminance:  value of brightness (calculate brightness of pixel by pixel)
-contrast: difference of brightness (calculate brightness of group of pixel)
